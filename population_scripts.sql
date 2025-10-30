@@ -1,5 +1,5 @@
 -- Clean up existing data
-TRUNCATE SquadMission, Missions, Squads, DragonRiders, Dragons RESTART IDENTITY CASCADE;
+-- TRUNCATE SquadMission, Missions, Squads, DragonRiders, Dragons RESTART IDENTITY CASCADE;
 
 -- Populate Dragons
 INSERT INTO Dragons (name, species, color, fire_power_level)
@@ -7,7 +7,7 @@ SELECT
     'Dragon_' || i AS name,
     (ARRAY['Fire Drake', 'Ice Wyvern', 'Storm Serpent', 'Earth Wyrm', 'Shadow Drake'])[ceil(random() * 5)],
     (ARRAY['Red', 'Blue', 'Green', 'Black', 'White', 'Bronze'])[ceil(random() * 6)],
-    (10 + floor(random() * 90))::INT  -- Fire power level 10–100
+    (10 + floor(random() * 90))::INT  
 FROM generate_series(1, 15) AS s(i);
 
 -- Populate DragonRiders
@@ -54,35 +54,34 @@ JOIN LATERAL (
     SELECT mission_id FROM Missions ORDER BY random() LIMIT (1 + floor(random() * 3))::INT
 ) m ON TRUE;
 
-
 -- Simulate History Events (updates)
-
+-- 25% a dragon will change colors (magical transformation making it plausible)
 UPDATE Dragons
 SET
     color = (ARRAY['Crimson', 'Azure', 'Emerald', 'Obsidian', 'Ivory'])[ceil(random() * 5)],
     fire_power_level = fire_power_level + (5 - floor(random() * 10))
 WHERE random() < 0.25;
 
--- Some riders switch dragons (logs into DragonRiders_history)
+-- 30% chance some riders switch dragons (logs into DragonRiders_history)
 UPDATE DragonRiders
 SET
     dragon_id = (SELECT dragon_id FROM Dragons ORDER BY random() LIMIT 1)
 WHERE random() < 0.3;  
 
--- Some squads change leaders
+-- 40% chance some squads change leaders
 UPDATE Squads
 SET
     leader_id = (SELECT rider_id FROM DragonRiders ORDER BY random() LIMIT 1)
 WHERE random() < 0.4;
 
--- Some missions increase in difficulty or are completed
+-- 30% chance some missions will increase in difficulty or are completed
 UPDATE Missions
 SET
     difficulty_level = LEAST(10, difficulty_level + 1),
     location = (ARRAY['Frostpeak', 'Skyhold', 'Ashlands', 'Stormspire', 'Shadowvale'])[ceil(random() * 5)]
 WHERE random() < 0.3;
 
--- Some squad missions update status
+-- 50% chance of some squad chanigng the mission's status
 UPDATE SquadMission
 SET
     status = CASE status
