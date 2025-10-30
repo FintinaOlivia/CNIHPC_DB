@@ -1,5 +1,5 @@
 -- Clean up existing data
-TRUNCATE kingdoms, wizards, spells, artifacts, wizardspells RESTART IDENTITY CASCADE;
+--TRUNCATE kingdoms, wizards, spells, artifacts, wizardspells RESTART IDENTITY CASCADE;
 
 -- Generation Scripts
 CREATE OR REPLACE FUNCTION populate_kingdoms(n INT)
@@ -133,7 +133,7 @@ SET valid_end = current_timestamp,
     sys_period = tstzrange(lower(sys_period), current_timestamp)
 WHERE name LIKE 'Artifact_%' AND random() < 0.2;
 
--- 10% chance to delete a spell
+-- 50% chance to delete a creature
 DELETE FROM creatures
 WHERE random() < 0.5;
 
