@@ -1,0 +1,158 @@
+-- Create tables:
+-- CREATE TABLE Dragons (
+--     dragon_id SERIAL PRIMARY KEY,
+--     name TEXT NOT NULL,
+--     species TEXT,
+--     color TEXT,
+--     fire_power_level INT CHECK (fire_power_level BETWEEN 1 AND 100),
+--     valid_start TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
+--     valid_end TIMESTAMPTZ DEFAULT '9999-12-31 23:59:59' NOT NULL,
+--     transaction_start TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
+--     transaction_end TIMESTAMPTZ DEFAULT '9999-12-31 23:59:59' NOT NULL
+-- );
+
+-- CREATE TABLE DragonRiders (
+--     rider_id SERIAL PRIMARY KEY,
+--     name TEXT NOT NULL,
+--     age INT CHECK (age >= 10),
+--     rank TEXT,
+--     dragon_id INT REFERENCES Dragons(dragon_id),
+--     valid_start TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
+--     valid_end TIMESTAMPTZ DEFAULT '9999-12-31 23:59:59' NOT NULL,
+--     transaction_start TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
+--     transaction_end TIMESTAMPTZ DEFAULT '9999-12-31 23:59:59' NOT NULL
+-- );
+
+-- CREATE TABLE Squads (
+--     squad_id SERIAL PRIMARY KEY,
+--     name TEXT NOT NULL,
+--     leader_id INT REFERENCES DragonRiders(rider_id),
+--     valid_start TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
+--     valid_end TIMESTAMPTZ DEFAULT '9999-12-31 23:59:59' NOT NULL,
+--     transaction_start TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
+--     transaction_end TIMESTAMPTZ DEFAULT '9999-12-31 23:59:59' NOT NULL
+-- );
+
+-- CREATE TABLE Missions (
+--     mission_id SERIAL PRIMARY KEY,
+--     mission_name TEXT NOT NULL,
+--     location TEXT,
+--     difficulty_level INT CHECK (difficulty_level BETWEEN 1 AND 10),
+--     valid_start TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
+--     valid_end TIMESTAMPTZ DEFAULT '9999-12-31 23:59:59' NOT NULL,
+--     transaction_start TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
+--     transaction_end TIMESTAMPTZ DEFAULT '9999-12-31 23:59:59' NOT NULL
+-- );
+
+-- CREATE TABLE SquadMission (
+--     squad_id INT REFERENCES Squads(squad_id),
+--     mission_id INT REFERENCES Missions(mission_id),
+--     assigned_date TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
+--     status TEXT DEFAULT 'assigned',
+--     PRIMARY KEY (squad_id, mission_id),
+--     valid_start TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
+--     valid_end TIMESTAMPTZ DEFAULT '9999-12-31 23:59:59' NOT NULL,
+--     transaction_start TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
+--     transaction_end TIMESTAMPTZ DEFAULT '9999-12-31 23:59:59' NOT NULL
+-- );
+
+-- Create History Tables
+-- CREATE TABLE Dragons_history (LIKE Dragons);
+-- CREATE TABLE DragonRiders_history (LIKE DragonRiders);
+-- CREATE TABLE Squads_history (LIKE Squads);
+-- CREATE TABLE Missions_history (LIKE Missions);
+-- CREATE TABLE SquadMission_history (LIKE SquadMission);
+
+-- Create Triggers
+-- CREATE OR REPLACE FUNCTION Dragons_history_trigger()
+-- RETURNS TRIGGER AS $BODY$
+-- BEGIN
+--     IF TG_OP = 'UPDATE' THEN
+--         INSERT INTO Dragons_history
+--         (dragon_id, name, species, color, fire_power_level,
+--          valid_start, valid_end,
+--          transaction_start, transaction_end)
+--         VALUES
+--         (OLD.dragon_id, OLD.name, OLD.species, OLD.color, OLD.fire_power_level,
+--          OLD.valid_start, OLD.valid_end,
+--          OLD.transaction_start, CURRENT_TIMESTAMP);
+--         RETURN NEW;
+--     ELSIF TG_OP = 'DELETE' THEN
+--         INSERT INTO Dragons_history
+--         (dragon_id, name, species, color, fire_power_level,
+--          valid_start, valid_end,
+--          transaction_start, transaction_end)
+--         VALUES
+--         (OLD.dragon_id, OLD.name, OLD.species, OLD.color, OLD.fire_power_level,
+--          OLD.valid_start, OLD.valid_end,
+--          OLD.transaction_start, CURRENT_TIMESTAMP);
+--         RETURN OLD;
+--     END IF;
+--     RETURN NULL;
+-- END;
+-- $BODY$
+-- LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION create_history_trigger(base_table text)
+RETURNS void AS $BODY$
+DECLARE
+    history_table text := base_table || '_history';
+    trigger_name text := base_table || '_history_trigger';
+    sql text;
+BEGIN
+    EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I;', trigger_name, base_table);
+
+    sql := format($f$
+        CREATE OR REPLACE FUNCTION %I()
+        RETURNS TRIGGER AS $$
+        BEGIN
+            IF TG_OP = 'UPDATE' THEN
+                OLD.transaction_end := CURRENT_TIMESTAMP;
+                INSERT INTO %I SELECT OLD.*;
+                NEW.transaction_start := CURRENT_TIMESTAMP;
+                NEW.transaction_end := '9999-12-31 23:59:59'::timestamptz;
+
+            ELSIF TG_OP = 'DELETE' THEN
+                OLD.transaction_end := CURRENT_TIMESTAMP;
+                INSERT INTO %I SELECT OLD.*;
+                RETURN OLD;
+            END IF;
+            RETURN NULL;
+        END;
+        $$ LANGUAGE plpgsql;
+    $f$, trigger_name, history_table, history_table);
+
+    EXECUTE sql;
+
+    EXECUTE format($f$
+        CREATE TRIGGER %I
+        AFTER UPDATE OR DELETE ON %I
+        FOR EACH ROW
+        EXECUTE FUNCTION %I();
+    $f$, trigger_name, base_table, trigger_name);
+
+    RAISE NOTICE 'History trigger created for table: %', base_table;
+END;
+$BODY$ LANGUAGE plpgsql;
+
+
+-- CREATE TRIGGERS
+
+SELECT create_history_trigger('dragons');
+SELECT create_history_trigger('dragonriders');
+SELECT create_history_trigger('squads');
+SELECT create_history_trigger('missions');
+SELECT create_history_trigger('squadmission');
+
+-- TRUNCATE TABLE
+--     dragonriders,
+--     dragonriders_history,
+--     squads,
+--     squads_history,
+--     missions,
+--     missions_history,
+--     squadmission,
+--     squadmission_history,
+--     dragons,
+--     dragons_history
+-- RESTART IDENTITY CASCADE;
